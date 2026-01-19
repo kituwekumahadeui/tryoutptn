@@ -14,6 +14,7 @@ import { z } from 'zod';
 const registerSchema = z.object({
   nama: z.string().min(3, 'Nama minimal 3 karakter').max(100, 'Nama maksimal 100 karakter'),
   nisn: z.string().length(10, 'NISN harus 10 digit').regex(/^\d+$/, 'NISN hanya boleh angka'),
+  tanggalLahir: z.string().min(1, 'Tanggal lahir wajib diisi'),
   asalSekolah: z.string().min(3, 'Asal sekolah minimal 3 karakter').max(200, 'Asal sekolah maksimal 200 karakter'),
 });
 
@@ -23,6 +24,7 @@ const Register = () => {
   const [formData, setFormData] = useState({
     nama: '',
     nisn: '',
+    tanggalLahir: '',
     asalSekolah: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -42,7 +44,7 @@ const Register = () => {
     setErrors({});
 
     try {
-      const validated = registerSchema.parse(formData) as { nama: string; nisn: string; asalSekolah: string };
+      const validated = registerSchema.parse(formData) as { nama: string; nisn: string; tanggalLahir: string; asalSekolah: string };
       
       if (remainingSlots <= 0) {
         toast.error('Maaf, kuota pendaftaran sudah penuh!');
@@ -145,6 +147,21 @@ const Register = () => {
                     />
                     {errors.nisn && (
                       <p className="text-sm text-destructive">{errors.nisn}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="tanggalLahir">Tanggal Lahir</Label>
+                    <Input
+                      id="tanggalLahir"
+                      name="tanggalLahir"
+                      type="date"
+                      value={formData.tanggalLahir}
+                      onChange={handleChange}
+                      className={errors.tanggalLahir ? 'border-destructive' : ''}
+                    />
+                    {errors.tanggalLahir && (
+                      <p className="text-sm text-destructive">{errors.tanggalLahir}</p>
                     )}
                   </div>
 

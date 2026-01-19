@@ -42,11 +42,12 @@ const Admin = () => {
   );
 
   const exportToCSV = () => {
-    const headers = ['No', 'Nama', 'NISN', 'Asal Sekolah', 'Tanggal Daftar'];
+    const headers = ['No', 'Nama', 'NISN', 'Tanggal Lahir', 'Asal Sekolah', 'Tanggal Daftar'];
     const rows = participants.map((p, index) => [
       index + 1,
       p.nama,
       p.nisn,
+      p.tanggalLahir ? new Date(p.tanggalLahir).toLocaleDateString('id-ID') : '-',
       p.asalSekolah,
       new Date(p.registeredAt).toLocaleDateString('id-ID'),
     ]);
@@ -199,6 +200,7 @@ const Admin = () => {
                     <TableHead className="w-16">No</TableHead>
                     <TableHead>Nama Lengkap</TableHead>
                     <TableHead>NISN</TableHead>
+                    <TableHead>Tanggal Lahir</TableHead>
                     <TableHead>Asal Sekolah</TableHead>
                     <TableHead>Tanggal Daftar</TableHead>
                   </TableRow>
@@ -207,7 +209,7 @@ const Admin = () => {
                   {filteredParticipants.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={5}
+                        colSpan={6}
                         className="text-center py-8 text-muted-foreground"
                       >
                         {searchQuery
@@ -226,6 +228,15 @@ const Admin = () => {
                         </TableCell>
                         <TableCell className="font-mono">
                           {participant.nisn}
+                        </TableCell>
+                        <TableCell>
+                          {participant.tanggalLahir 
+                            ? new Date(participant.tanggalLahir).toLocaleDateString('id-ID', {
+                                day: 'numeric',
+                                month: 'long',
+                                year: 'numeric',
+                              })
+                            : '-'}
                         </TableCell>
                         <TableCell>{participant.asalSekolah}</TableCell>
                         <TableCell>
