@@ -4,6 +4,7 @@ interface Participant {
   id: string;
   nama: string;
   nisn: string;
+  tanggalLahir: string;
   asalSekolah: string;
   registeredAt: string;
 }
