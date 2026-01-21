@@ -6,6 +6,8 @@ interface Participant {
   nisn: string;
   tanggalLahir: string;
   asalSekolah: string;
+  whatsapp: string;
+  email: string;
   registeredAt: string;
 }
 

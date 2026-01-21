@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import SlotCounter from '@/components/SlotCounter';
 import Header from '@/components/Header';
+import OTPVerification from '@/components/OTPVerification';
 import { toast } from 'sonner';
-import { UserPlus, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UserPlus, CheckCircle2, AlertCircle, Mail, Phone } from 'lucide-react';
 import { z } from 'zod';
 
 const registerSchema = z.object({
@@ -16,6 +17,8 @@ const registerSchema = z.object({
   nisn: z.string().length(10, 'NISN harus 10 digit').regex(/^\d+$/, 'NISN hanya boleh angka'),
   tanggalLahir: z.string().min(1, 'Tanggal lahir wajib diisi'),
   asalSekolah: z.string().min(3, 'Asal sekolah minimal 3 karakter').max(200, 'Asal sekolah maksimal 200 karakter'),
+  whatsapp: z.string().min(10, 'Nomor WhatsApp minimal 10 digit').max(15, 'Nomor WhatsApp maksimal 15 digit').regex(/^\d+$/, 'Nomor WhatsApp hanya boleh angka'),
+  email: z.string().email('Email tidak valid').max(255, 'Email maksimal 255 karakter'),
 });
 
 const Register = () => {
@@ -26,9 +29,13 @@ const Register = () => {
     nisn: '',
     tanggalLahir: '',
     asalSekolah: '',
+    whatsapp: '',
+    email: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showOTPVerification, setShowOTPVerification] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -38,20 +45,45 @@ const Register = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleRequestOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setErrors({});
 
     try {
-      const validated = registerSchema.parse(formData) as { nama: string; nisn: string; tanggalLahir: string; asalSekolah: string };
+      const validated = registerSchema.parse(formData);
       
       if (remainingSlots <= 0) {
         toast.error('Maaf, kuota pendaftaran sudah penuh!');
-        setIsSubmitting(false);
         return;
       }
 
+      // Show OTP verification
+      setShowOTPVerification(true);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const fieldErrors: Record<string, string> = {};
+        error.errors.forEach(err => {
+          if (err.path[0]) {
+            fieldErrors[err.path[0] as string] = err.message;
+          }
+        });
+        setErrors(fieldErrors);
+      }
+    }
+  };
+
+  const handleEmailVerified = () => {
+    setIsEmailVerified(true);
+    setShowOTPVerification(false);
+    handleFinalSubmit();
+  };
+
+  const handleFinalSubmit = async () => {
+    setIsSubmitting(true);
+
+    try {
+      const validated = registerSchema.parse(formData) as { nama: string; nisn: string; tanggalLahir: string; asalSekolah: string; whatsapp: string; email: string };
+      
       const success = register(validated);
       
       if (success) {
@@ -109,7 +141,14 @@ const Register = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isFull ? (
+              {showOTPVerification ? (
+                <OTPVerification
+                  email={formData.email}
+                  nama={formData.nama}
+                  onVerified={handleEmailVerified}
+                  onCancel={() => setShowOTPVerification(false)}
+                />
+              ) : isFull ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <AlertCircle className="w-16 h-16 text-destructive mb-4" />
                   <h3 className="text-xl font-semibold text-foreground mb-2">Kuota Penuh</h3>
@@ -118,7 +157,7 @@ const Register = () => {
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleRequestOTP} className="space-y-5">
                   <div className="space-y-2">
                     <Label htmlFor="nama">Nama Lengkap</Label>
                     <Input
@@ -180,17 +219,58 @@ const Register = () => {
                     )}
                   </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="whatsapp" className="flex items-center gap-2">
+                      <Phone className="w-4 h-4" />
+                      Nomor WhatsApp
+                    </Label>
+                    <Input
+                      id="whatsapp"
+                      name="whatsapp"
+                      placeholder="Contoh: 08123456789"
+                      value={formData.whatsapp}
+                      onChange={handleChange}
+                      maxLength={15}
+                      className={errors.whatsapp ? 'border-destructive' : ''}
+                    />
+                    {errors.whatsapp && (
+                      <p className="text-sm text-destructive">{errors.whatsapp}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email" className="flex items-center gap-2">
+                      <Mail className="w-4 h-4" />
+                      Email
+                    </Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      placeholder="Contoh: nama@email.com"
+                      value={formData.email}
+                      onChange={handleChange}
+                      className={errors.email ? 'border-destructive' : ''}
+                    />
+                    {errors.email && (
+                      <p className="text-sm text-destructive">{errors.email}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Email akan diverifikasi dengan kode OTP sebelum pendaftaran
+                    </p>
+                  </div>
+
                   <Button 
                     type="submit" 
                     className="w-full bg-gradient-primary hover:opacity-90 transition-opacity gap-2"
                     disabled={isSubmitting}
                   >
                     {isSubmitting ? (
-                      'Mendaftar...'
+                      'Memproses...'
                     ) : (
                       <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        Daftar Sekarang
+                        <Mail className="w-4 h-4" />
+                        Verifikasi Email & Daftar
                       </>
                     )}
                   </Button>
