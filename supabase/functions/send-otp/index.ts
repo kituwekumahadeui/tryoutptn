@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Create Supabase client with service role (bypasses RLS)
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function sendEmail(to: string, subject: string, html: string) {
   const response = await fetch("https://api.resend.com/emails", {
@@ -19,19 +25,23 @@ async function sendEmail(to: string, subject: string, html: string) {
   return response.json();
 }
 
-
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Store OTPs temporarily (in production, use a database)
-const otpStore = new Map<string, { otp: string; expiresAt: number }>();
-
 function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Simple hash function for OTP (not cryptographic, but sufficient for short-lived OTPs)
+async function hashOTP(otp: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(otp + SUPABASE_SERVICE_ROLE_KEY);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 interface SendOTPRequest {
@@ -60,7 +70,17 @@ const handler = async (req: Request): Promise<Response> => {
       
       console.log(`Verifying OTP for email: ${email}`);
       
-      const stored = otpStore.get(email);
+      // Get stored OTP from database
+      const { data: stored, error: fetchError } = await supabase
+        .from("email_otps")
+        .select("otp_hash, expires_at")
+        .eq("email", email.toLowerCase())
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error("Error fetching OTP:", fetchError);
+        throw fetchError;
+      }
       
       if (!stored) {
         return new Response(
@@ -72,8 +92,9 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      if (Date.now() > stored.expiresAt) {
-        otpStore.delete(email);
+      if (new Date() > new Date(stored.expires_at)) {
+        // Delete expired OTP
+        await supabase.from("email_otps").delete().eq("email", email.toLowerCase());
         return new Response(
           JSON.stringify({ success: false, message: "OTP sudah kadaluarsa. Silakan minta OTP baru." }),
           {
@@ -83,7 +104,9 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      if (stored.otp !== otp) {
+      // Verify OTP hash
+      const inputHash = await hashOTP(otp);
+      if (stored.otp_hash !== inputHash) {
         return new Response(
           JSON.stringify({ success: false, message: "OTP tidak valid." }),
           {
@@ -94,7 +117,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       // OTP valid, remove it
-      otpStore.delete(email);
+      await supabase.from("email_otps").delete().eq("email", email.toLowerCase());
       console.log(`OTP verified successfully for email: ${email}`);
 
       return new Response(
@@ -111,10 +134,22 @@ const handler = async (req: Request): Promise<Response> => {
       console.log(`Sending OTP to email: ${email}`);
 
       const otp = generateOTP();
-      const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+      const otpHash = await hashOTP(otp);
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
 
-      // Store OTP
-      otpStore.set(email, { otp, expiresAt });
+      // Store OTP in database (upsert to handle resend)
+      const { error: upsertError } = await supabase
+        .from("email_otps")
+        .upsert({
+          email: email.toLowerCase(),
+          otp_hash: otpHash,
+          expires_at: expiresAt,
+        }, { onConflict: "email" });
+
+      if (upsertError) {
+        console.error("Error storing OTP:", upsertError);
+        throw upsertError;
+      }
 
       // Send email
       const emailHtml = `
@@ -159,7 +194,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       const emailResponse = await sendEmail(email, "Kode Verifikasi Pendaftaran Tryout PTN", emailHtml);
 
-      console.log("Email sent successfully:", emailResponse);
+      console.log("Email sent:", emailResponse);
 
       return new Response(
         JSON.stringify({ success: true, message: "OTP berhasil dikirim ke email Anda." }),
