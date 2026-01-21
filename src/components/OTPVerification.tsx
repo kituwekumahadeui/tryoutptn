@@ -67,14 +67,6 @@ const OTPVerification = ({ email, nama, onVerified, onCancel }: OTPVerificationP
 
     setIsVerifying(true);
     try {
-      const { data, error } = await supabase.functions.invoke('send-otp', {
-        body: { email, otp },
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      // Get the action from query params
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-otp?action=verify`,
         {
