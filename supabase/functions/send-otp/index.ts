@@ -2,13 +2,35 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "Tryout PTN <onboarding@resend.dev>";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Create Supabase client with service role (bypasses RLS)
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-async function sendEmail(to: string, subject: string, html: string) {
+type SendEmailResult =
+  | { ok: true; status: number; data: any }
+  | { ok: false; status: number; data: any; message: string };
+
+function safeJsonParse(text: string) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+async function sendEmail(to: string, subject: string, html: string): Promise<SendEmailResult> {
+  if (!RESEND_API_KEY) {
+    return {
+      ok: false,
+      status: 500,
+      data: null,
+      message: "RESEND_API_KEY belum dikonfigurasi.",
+    };
+  }
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -16,13 +38,29 @@ async function sendEmail(to: string, subject: string, html: string) {
       "Authorization": `Bearer ${RESEND_API_KEY}`,
     },
     body: JSON.stringify({
-      from: "Tryout PTN <onboarding@resend.dev>",
+      from: RESEND_FROM,
       to: [to],
       subject,
       html,
     }),
   });
-  return response.json();
+
+  const text = await response.text();
+  const json = safeJsonParse(text);
+  const resendMessage =
+    json?.message ?? json?.error?.message ?? "Gagal mengirim email.";
+  const resendStatusCode = typeof json?.statusCode === "number" ? json.statusCode : null;
+
+  if (!response.ok || (resendStatusCode !== null && resendStatusCode >= 400)) {
+    return {
+      ok: false,
+      status: response.status,
+      data: json,
+      message: String(resendMessage),
+    };
+  }
+
+  return { ok: true, status: response.status, data: json };
 }
 
 const corsHeaders = {
@@ -62,11 +100,13 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     const url = new URL(req.url);
-    const action = url.searchParams.get("action");
+    const queryAction = url.searchParams.get("action");
+    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    const action = (body?.action ?? queryAction) as string | null;
 
     if (action === "verify") {
       // Verify OTP
-      const { email, otp }: VerifyOTPRequest = await req.json();
+      const { email, otp }: VerifyOTPRequest = body;
       
       console.log(`Verifying OTP for email: ${email}`);
       
@@ -86,7 +126,8 @@ const handler = async (req: Request): Promise<Response> => {
         return new Response(
           JSON.stringify({ success: false, message: "OTP tidak ditemukan. Silakan minta OTP baru." }),
           {
-            status: 400,
+            // Return 200 so frontend callers using supabase.functions.invoke don't treat this as a runtime error
+            status: 200,
             headers: { "Content-Type": "application/json", ...corsHeaders },
           }
         );
@@ -98,7 +139,7 @@ const handler = async (req: Request): Promise<Response> => {
         return new Response(
           JSON.stringify({ success: false, message: "OTP sudah kadaluarsa. Silakan minta OTP baru." }),
           {
-            status: 400,
+            status: 200,
             headers: { "Content-Type": "application/json", ...corsHeaders },
           }
         );
@@ -110,7 +151,7 @@ const handler = async (req: Request): Promise<Response> => {
         return new Response(
           JSON.stringify({ success: false, message: "OTP tidak valid." }),
           {
-            status: 400,
+            status: 200,
             headers: { "Content-Type": "application/json", ...corsHeaders },
           }
         );
@@ -129,7 +170,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     } else {
       // Send OTP
-      const { email, nama }: SendOTPRequest = await req.json();
+      const { email, nama }: SendOTPRequest = body;
       
       console.log(`Sending OTP to email: ${email}`);
 
@@ -192,16 +233,36 @@ const handler = async (req: Request): Promise<Response> => {
         </html>
       `;
 
-      const emailResponse = await sendEmail(email, "Kode Verifikasi Pendaftaran Tryout PTN", emailHtml);
+      const emailResponse = await sendEmail(
+        email,
+        "Kode Verifikasi Pendaftaran Tryout PTN",
+        emailHtml,
+      );
 
-      console.log("Email sent:", emailResponse);
+      console.log("Email send result:", emailResponse);
+
+      if (!emailResponse.ok) {
+        // Rollback OTP if email couldn't be sent (prevents confusing "OTP terkirim" but user receives nothing)
+        await supabase.from("email_otps").delete().eq("email", email.toLowerCase());
+
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: `Gagal mengirim email OTP: ${emailResponse.message}`,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
 
       return new Response(
         JSON.stringify({ success: true, message: "OTP berhasil dikirim ke email Anda." }),
         {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
+        },
       );
     }
   } catch (error: any) {

@@ -67,25 +67,17 @@ const OTPVerification = ({ email, nama, onVerified, onCancel }: OTPVerificationP
 
     setIsVerifying(true);
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-otp?action=verify`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ email, otp }),
-        }
-      );
+      const { data, error } = await supabase.functions.invoke('send-otp', {
+        body: { action: 'verify', email, otp },
+      });
 
-      const result = await response.json();
+      if (error) throw error;
 
-      if (result.success) {
+      if (data?.success) {
         toast.success('Email berhasil diverifikasi!');
         onVerified();
       } else {
-        toast.error(result.message || 'OTP tidak valid');
+        toast.error(data?.message || 'OTP tidak valid');
       }
     } catch (error: any) {
       console.error('Error verifying OTP:', error);
