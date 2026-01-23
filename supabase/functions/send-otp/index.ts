@@ -1,8 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const RESEND_FROM = Deno.env.get("RESEND_FROM") ?? "Tryout PTN <onboarding@resend.dev>";
+const GMAIL_USER = Deno.env.get("GMAIL_USER");
+const GMAIL_APP_PASSWORD = Deno.env.get("GMAIL_APP_PASSWORD");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -10,57 +11,47 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 type SendEmailResult =
-  | { ok: true; status: number; data: any }
-  | { ok: false; status: number; data: any; message: string };
-
-function safeJsonParse(text: string) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { raw: text };
-  }
-}
+  | { ok: true }
+  | { ok: false; message: string };
 
 async function sendEmail(to: string, subject: string, html: string): Promise<SendEmailResult> {
-  if (!RESEND_API_KEY) {
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
     return {
       ok: false,
-      status: 500,
-      data: null,
-      message: "RESEND_API_KEY belum dikonfigurasi.",
+      message: "GMAIL_USER atau GMAIL_APP_PASSWORD belum dikonfigurasi.",
     };
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({
-      from: RESEND_FROM,
-      to: [to],
-      subject,
-      html,
-    }),
-  });
+  try {
+    const client = new SMTPClient({
+      connection: {
+        hostname: "smtp.gmail.com",
+        port: 465,
+        tls: true,
+        auth: {
+          username: GMAIL_USER,
+          password: GMAIL_APP_PASSWORD,
+        },
+      },
+    });
 
-  const text = await response.text();
-  const json = safeJsonParse(text);
-  const resendMessage =
-    json?.message ?? json?.error?.message ?? "Gagal mengirim email.";
-  const resendStatusCode = typeof json?.statusCode === "number" ? json.statusCode : null;
+    await client.send({
+      from: GMAIL_USER,
+      to: to,
+      subject: subject,
+      content: "Silakan aktifkan HTML untuk melihat email ini.",
+      html: html,
+    });
 
-  if (!response.ok || (resendStatusCode !== null && resendStatusCode >= 400)) {
+    await client.close();
+    return { ok: true };
+  } catch (error: any) {
+    console.error("Gmail SMTP error:", error);
     return {
       ok: false,
-      status: response.status,
-      data: json,
-      message: String(resendMessage),
+      message: error.message || "Gagal mengirim email via Gmail.",
     };
   }
-
-  return { ok: true, status: response.status, data: json };
 }
 
 const corsHeaders = {
@@ -126,7 +117,6 @@ const handler = async (req: Request): Promise<Response> => {
         return new Response(
           JSON.stringify({ success: false, message: "OTP tidak ditemukan. Silakan minta OTP baru." }),
           {
-            // Return 200 so frontend callers using supabase.functions.invoke don't treat this as a runtime error
             status: 200,
             headers: { "Content-Type": "application/json", ...corsHeaders },
           }
@@ -242,7 +232,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("Email send result:", emailResponse);
 
       if (!emailResponse.ok) {
-        // Rollback OTP if email couldn't be sent (prevents confusing "OTP terkirim" but user receives nothing)
+        // Rollback OTP if email couldn't be sent
         await supabase.from("email_otps").delete().eq("email", email.toLowerCase());
 
         return new Response(
