@@ -14,6 +14,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import AdminPaymentVerification from '@/components/AdminPaymentVerification';
 
 const Admin = () => {
   const { participants, totalSlots, remainingSlots } = useRegistration();
@@ -168,97 +170,111 @@ const Admin = () => {
           </Card>
         </div>
 
-        {/* Search and Export */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari nama, NISN, atau asal sekolah..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Button onClick={exportToCSV} variant="outline" className="gap-2">
-            <Download className="w-4 h-4" />
-            Export CSV
-          </Button>
-        </div>
+        {/* Tabs for Participants and Payments */}
+        <Tabs defaultValue="participants" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="participants">Daftar Peserta</TabsTrigger>
+            <TabsTrigger value="payments">Verifikasi Pembayaran</TabsTrigger>
+          </TabsList>
 
-        {/* Participants Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">
-              Daftar Peserta ({filteredParticipants.length} dari {participants.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-16">No</TableHead>
-                    <TableHead>Nama Lengkap</TableHead>
-                    <TableHead>NISN</TableHead>
-                    <TableHead>Tanggal Lahir</TableHead>
-                    <TableHead>Asal Sekolah</TableHead>
-                    <TableHead>Tanggal Daftar</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredParticipants.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="text-center py-8 text-muted-foreground"
-                      >
-                        {searchQuery
-                          ? 'Tidak ada peserta yang cocok dengan pencarian'
-                          : 'Belum ada peserta yang mendaftar'}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredParticipants.map((participant, index) => (
-                      <TableRow key={participant.id}>
-                        <TableCell className="font-medium">
-                          {participants.indexOf(participant) + 1}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {participant.nama}
-                        </TableCell>
-                        <TableCell className="font-mono">
-                          {participant.nisn}
-                        </TableCell>
-                        <TableCell>
-                          {participant.tanggalLahir 
-                            ? new Date(participant.tanggalLahir).toLocaleDateString('id-ID', {
-                                day: 'numeric',
-                                month: 'long',
-                                year: 'numeric',
-                              })
-                            : '-'}
-                        </TableCell>
-                        <TableCell>{participant.asalSekolah}</TableCell>
-                        <TableCell>
-                          {new Date(participant.registeredAt).toLocaleDateString(
-                            'id-ID',
-                            {
-                              day: 'numeric',
-                              month: 'long',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            }
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+          <TabsContent value="participants" className="space-y-4">
+            {/* Search and Export */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari nama, NISN, atau asal sekolah..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Button onClick={exportToCSV} variant="outline" className="gap-2">
+                <Download className="w-4 h-4" />
+                Export CSV
+              </Button>
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Participants Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">
+                  Daftar Peserta ({filteredParticipants.length} dari {participants.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">No</TableHead>
+                        <TableHead>Nama Lengkap</TableHead>
+                        <TableHead>NISN</TableHead>
+                        <TableHead>Tanggal Lahir</TableHead>
+                        <TableHead>Asal Sekolah</TableHead>
+                        <TableHead>Tanggal Daftar</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredParticipants.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={6}
+                            className="text-center py-8 text-muted-foreground"
+                          >
+                            {searchQuery
+                              ? 'Tidak ada peserta yang cocok dengan pencarian'
+                              : 'Belum ada peserta yang mendaftar'}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredParticipants.map((participant, index) => (
+                          <TableRow key={participant.id}>
+                            <TableCell className="font-medium">
+                              {participants.indexOf(participant) + 1}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {participant.nama}
+                            </TableCell>
+                            <TableCell className="font-mono">
+                              {participant.nisn}
+                            </TableCell>
+                            <TableCell>
+                              {participant.tanggalLahir 
+                                ? new Date(participant.tanggalLahir).toLocaleDateString('id-ID', {
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric',
+                                  })
+                                : '-'}
+                            </TableCell>
+                            <TableCell>{participant.asalSekolah}</TableCell>
+                            <TableCell>
+                              {new Date(participant.registeredAt).toLocaleDateString(
+                                'id-ID',
+                                {
+                                  day: 'numeric',
+                                  month: 'long',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                }
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="payments">
+            <AdminPaymentVerification participants={participants} />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
