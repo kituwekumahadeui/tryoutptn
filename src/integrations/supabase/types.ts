@@ -38,6 +38,45 @@ export type Database = {
         }
         Relationships: []
       }
+      participants: {
+        Row: {
+          asal_sekolah: string
+          email: string
+          id: string
+          nama: string
+          nisn: string
+          password_hash: string
+          registered_at: string
+          tanggal_lahir: string
+          updated_at: string
+          whatsapp: string
+        }
+        Insert: {
+          asal_sekolah: string
+          email: string
+          id?: string
+          nama: string
+          nisn: string
+          password_hash: string
+          registered_at?: string
+          tanggal_lahir: string
+          updated_at?: string
+          whatsapp: string
+        }
+        Update: {
+          asal_sekolah?: string
+          email?: string
+          id?: string
+          nama?: string
+          nisn?: string
+          password_hash?: string
+          registered_at?: string
+          tanggal_lahir?: string
+          updated_at?: string
+          whatsapp?: string
+        }
+        Relationships: []
+      }
       payment_proofs: {
         Row: {
           admin_notes: string | null

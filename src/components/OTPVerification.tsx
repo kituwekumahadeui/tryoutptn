@@ -8,7 +8,7 @@ import { Mail, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
 interface OTPVerificationProps {
   email: string;
   nama: string;
-  onVerified: () => void;
+  onVerified: (password: string) => void;
   onCancel: () => void;
 }
 
@@ -74,8 +74,21 @@ const OTPVerification = ({ email, nama, onVerified, onCancel }: OTPVerificationP
       if (error) throw error;
 
       if (data?.success) {
-        toast.success('Email berhasil diverifikasi!');
-        onVerified();
+        // OTP verified, now send password via email
+        const { data: passwordData, error: passwordError } = await supabase.functions.invoke('send-password', {
+          body: { email, nama },
+        });
+
+        if (passwordError) throw passwordError;
+
+        if (passwordData?.success && passwordData?.password) {
+          toast.success('Email berhasil diverifikasi!', {
+            description: 'Password telah dikirim ke email Anda.',
+          });
+          onVerified(passwordData.password);
+        } else {
+          toast.error(passwordData?.message || 'Gagal mengirim password');
+        }
       } else {
         toast.error(data?.message || 'OTP tidak valid');
       }

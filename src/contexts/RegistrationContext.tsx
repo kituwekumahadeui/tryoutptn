@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Participant {
   id: string;
@@ -17,26 +18,63 @@ interface RegistrationContextType {
   remainingSlots: number;
   currentUser: Participant | null;
   isLoggedIn: boolean;
-  register: (data: Omit<Participant, 'id' | 'registeredAt'>) => boolean;
-  login: (nisn: string) => boolean;
+  register: (data: Omit<Participant, 'id' | 'registeredAt'>) => Promise<{ success: boolean; password?: string; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  refreshParticipants: () => Promise<void>;
 }
 
 const RegistrationContext = createContext<RegistrationContextType | undefined>(undefined);
 
 const TOTAL_SLOTS = 1000;
-const STORAGE_KEY = 'tryout-participants';
 const USER_KEY = 'tryout-current-user';
+
+// Simple hash function for password verification
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Generate random password
+function generatePassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let password = '';
+  for (let i = 0; i < 8; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+}
 
 export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [currentUser, setCurrentUser] = useState<Participant | null>(null);
 
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      setParticipants(JSON.parse(stored));
+  const refreshParticipants = async () => {
+    const { data, error } = await supabase
+      .from('participants')
+      .select('*')
+      .order('registered_at', { ascending: true });
+
+    if (!error && data) {
+      const mapped = data.map(p => ({
+        id: p.id,
+        nama: p.nama,
+        nisn: p.nisn,
+        tanggalLahir: p.tanggal_lahir,
+        asalSekolah: p.asal_sekolah,
+        whatsapp: p.whatsapp,
+        email: p.email,
+        registeredAt: p.registered_at,
+      }));
+      setParticipants(mapped);
     }
+  };
+
+  useEffect(() => {
+    refreshParticipants();
     const userStored = localStorage.getItem(USER_KEY);
     if (userStored) {
       setCurrentUser(JSON.parse(userStored));
@@ -45,36 +83,83 @@ export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
 
   const remainingSlots = TOTAL_SLOTS - participants.length;
 
-  const register = (data: Omit<Participant, 'id' | 'registeredAt'>): boolean => {
-    if (remainingSlots <= 0) return false;
-    
-    const exists = participants.some(p => p.nisn === data.nisn);
-    if (exists) return false;
+  const register = async (data: Omit<Participant, 'id' | 'registeredAt'>): Promise<{ success: boolean; password?: string; error?: string }> => {
+    if (remainingSlots <= 0) {
+      return { success: false, error: 'Kuota pendaftaran sudah penuh' };
+    }
 
-    const newParticipant: Participant = {
-      ...data,
-      id: crypto.randomUUID(),
-      registeredAt: new Date().toISOString(),
-    };
+    // Check if email or NISN already exists
+    const { data: existing } = await supabase
+      .from('participants')
+      .select('id')
+      .or(`email.eq.${data.email},nisn.eq.${data.nisn}`)
+      .limit(1);
 
-    const updated = [...participants, newParticipant];
-    setParticipants(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    
-    setCurrentUser(newParticipant);
-    localStorage.setItem(USER_KEY, JSON.stringify(newParticipant));
-    
-    return true;
+    if (existing && existing.length > 0) {
+      return { success: false, error: 'Email atau NISN sudah terdaftar' };
+    }
+
+    // Generate password
+    const password = generatePassword();
+    const passwordHash = await hashPassword(password);
+
+    // Insert into database
+    const { error: insertError } = await supabase
+      .from('participants')
+      .insert({
+        nama: data.nama,
+        nisn: data.nisn,
+        tanggal_lahir: data.tanggalLahir,
+        asal_sekolah: data.asalSekolah,
+        whatsapp: data.whatsapp,
+        email: data.email.toLowerCase(),
+        password_hash: passwordHash,
+      });
+
+    if (insertError) {
+      console.error('Insert error:', insertError);
+      return { success: false, error: insertError.message };
+    }
+
+    // Refresh participants list
+    await refreshParticipants();
+
+    return { success: true, password };
   };
 
-  const login = (nisn: string): boolean => {
-    const user = participants.find(p => p.nisn === nisn);
-    if (user) {
-      setCurrentUser(user);
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
-      return true;
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const passwordHash = await hashPassword(password);
+
+    const { data: user, error } = await supabase
+      .from('participants')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .eq('password_hash', passwordHash)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Login error:', error);
+      return { success: false, error: 'Terjadi kesalahan saat login' };
     }
-    return false;
+
+    if (!user) {
+      return { success: false, error: 'Email atau password salah' };
+    }
+
+    const mappedUser: Participant = {
+      id: user.id,
+      nama: user.nama,
+      nisn: user.nisn,
+      tanggalLahir: user.tanggal_lahir,
+      asalSekolah: user.asal_sekolah,
+      whatsapp: user.whatsapp,
+      email: user.email,
+      registeredAt: user.registered_at,
+    };
+
+    setCurrentUser(mappedUser);
+    localStorage.setItem(USER_KEY, JSON.stringify(mappedUser));
+    return { success: true };
   };
 
   const logout = () => {
@@ -93,6 +178,7 @@ export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
         register,
         login,
         logout,
+        refreshParticipants,
       }}
     >
       {children}
