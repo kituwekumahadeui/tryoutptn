@@ -9,7 +9,7 @@ import SlotCounter from '@/components/SlotCounter';
 import Header from '@/components/Header';
 import OTPVerification from '@/components/OTPVerification';
 import { toast } from 'sonner';
-import { UserPlus, CheckCircle2, AlertCircle, Mail, Phone } from 'lucide-react';
+import { UserPlus, AlertCircle, Mail, Phone } from 'lucide-react';
 import { z } from 'zod';
 
 const registerSchema = z.object({
@@ -35,7 +35,6 @@ const Register = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showOTPVerification, setShowOTPVerification] = useState(false);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -50,7 +49,7 @@ const Register = () => {
     setErrors({});
 
     try {
-      const validated = registerSchema.parse(formData);
+      registerSchema.parse(formData);
       
       if (remainingSlots <= 0) {
         toast.error('Maaf, kuota pendaftaran sudah penuh!');
@@ -72,28 +71,24 @@ const Register = () => {
     }
   };
 
-  const handleEmailVerified = () => {
-    setIsEmailVerified(true);
+  const handleEmailVerified = async (password: string) => {
     setShowOTPVerification(false);
-    handleFinalSubmit();
-  };
-
-  const handleFinalSubmit = async () => {
     setIsSubmitting(true);
 
     try {
       const validated = registerSchema.parse(formData) as { nama: string; nisn: string; tanggalLahir: string; asalSekolah: string; whatsapp: string; email: string };
       
-      const success = register(validated);
+      const result = await register(validated);
       
-      if (success) {
+      if (result.success) {
         toast.success('Pendaftaran berhasil!', {
-          description: 'Selamat! Anda telah terdaftar untuk tryout.',
+          description: 'Password telah dikirim ke email Anda. Silakan cek email untuk login.',
+          duration: 8000,
         });
-        navigate('/dashboard');
+        navigate('/login');
       } else {
-        toast.error('NISN sudah terdaftar', {
-          description: 'Silakan masuk menggunakan NISN Anda.',
+        toast.error('Gagal mendaftar', {
+          description: result.error || 'Terjadi kesalahan saat mendaftar',
         });
       }
     } catch (error) {
@@ -137,7 +132,7 @@ const Register = () => {
                 Formulir Pendaftaran
               </CardTitle>
               <CardDescription>
-                Pastikan data yang Anda masukkan sudah benar
+                Pastikan data yang Anda masukkan sudah benar. Password akan dikirim ke email setelah verifikasi.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -256,7 +251,7 @@ const Register = () => {
                       <p className="text-sm text-destructive">{errors.email}</p>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Email akan diverifikasi dengan kode OTP sebelum pendaftaran
+                      Email akan diverifikasi dengan kode OTP. Password akan dikirim ke email ini setelah verifikasi berhasil.
                     </p>
                   </div>
 

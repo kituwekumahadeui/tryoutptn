@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import Header from '@/components/Header';
 import SlotCounter from '@/components/SlotCounter';
 import { ArrowRight, BookOpen, Clock, Trophy, Users } from 'lucide-react';
+import logoGenza from '@/assets/logo-genza.png';
+import logoUnigal from '@/assets/logo-unigal.png';
 
 const Index = () => {
   const { remainingSlots, isLoggedIn } = useRegistration();
@@ -43,6 +45,17 @@ const Index = () => {
         
         <div className="relative container mx-auto px-4 py-20 md:py-28">
           <div className="max-w-3xl mx-auto text-center">
+            {/* Organizer Logos */}
+            <div className="flex items-center justify-center gap-4 mb-8 animate-fade-in">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
+                <img src={logoGenza} alt="Genza Education" className="h-10 object-contain" />
+              </div>
+              <span className="text-primary-foreground/60 text-2xl">×</span>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
+                <img src={logoUnigal} alt="Universitas Galuh" className="h-12 object-contain" />
+              </div>
+            </div>
+
             <div className="inline-flex items-center gap-2 bg-primary-foreground/10 backdrop-blur-sm text-primary-foreground px-4 py-2 rounded-full text-sm font-medium mb-6 animate-fade-in">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
@@ -54,7 +67,7 @@ const Index = () => {
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold text-primary-foreground mb-6 animate-fade-in" style={{ animationDelay: '0.1s' }}>
               Tryout Ujian Masuk
               <br />
-              <span className="bg-gradient-to-r from-secondary to-emerald-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-secondary to-yellow-300 bg-clip-text text-transparent">
                 Perguruan Tinggi
               </span>
             </h1>
@@ -158,7 +171,12 @@ const Index = () => {
       {/* Footer */}
       <footer className="bg-card border-t border-border py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>&copy; 2024 TryoutPTN. Platform simulasi ujian masuk perguruan tinggi.</p>
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <img src={logoGenza} alt="Genza Education" className="h-6 object-contain" />
+            <span>×</span>
+            <img src={logoUnigal} alt="Universitas Galuh" className="h-7 object-contain" />
+          </div>
+          <p>&copy; 2026 Genza Education × Universitas Galuh. Platform simulasi ujian masuk perguruan tinggi.</p>
         </div>
       </footer>
     </div>

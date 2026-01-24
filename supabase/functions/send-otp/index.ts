@@ -191,12 +191,12 @@ const handler = async (req: Request): Promise<Response> => {
           <style>
             body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0; background-color: #f5f7fa; }
             .container { max-width: 500px; margin: 40px auto; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; }
-            .header { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 30px; text-align: center; }
+            .header { background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 30px; text-align: center; }
             .header h1 { color: white; margin: 0; font-size: 24px; }
             .content { padding: 30px; }
             .greeting { color: #374151; font-size: 16px; margin-bottom: 20px; }
-            .otp-box { background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0; }
-            .otp-code { font-size: 36px; font-weight: bold; color: #059669; letter-spacing: 8px; margin: 0; }
+            .otp-box { background: #faf5ff; border: 2px solid #7c3aed; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0; }
+            .otp-code { font-size: 36px; font-weight: bold; color: #7c3aed; letter-spacing: 8px; margin: 0; }
             .info { color: #6b7280; font-size: 14px; margin-top: 20px; }
             .footer { background: #f9fafb; padding: 20px; text-align: center; color: #9ca3af; font-size: 12px; }
           </style>
@@ -205,6 +205,7 @@ const handler = async (req: Request): Promise<Response> => {
           <div class="container">
             <div class="header">
               <h1>🎓 Tryout PTN</h1>
+              <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Genza Education × Universitas Galuh</p>
             </div>
             <div class="content">
               <p class="greeting">Halo <strong>${nama}</strong>,</p>
@@ -216,7 +217,8 @@ const handler = async (req: Request): Promise<Response> => {
               <p class="info">⚠️ Jangan bagikan kode ini kepada siapapun.</p>
             </div>
             <div class="footer">
-              <p>© 2024 Tryout PTN. Semoga sukses!</p>
+              <p>© 2026 Genza Education × Universitas Galuh</p>
+              <p>Platform Tryout Ujian Masuk Perguruan Tinggi</p>
             </div>
           </div>
         </body>

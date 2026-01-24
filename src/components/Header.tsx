@@ -1,7 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useRegistration } from '@/contexts/RegistrationContext';
 import { Button } from '@/components/ui/button';
-import { GraduationCap, LogOut, User } from 'lucide-react';
+import { LogOut, User } from 'lucide-react';
+import logoGenza from '@/assets/logo-genza.png';
+import logoUnigal from '@/assets/logo-unigal.png';
 
 const Header = () => {
   const { isLoggedIn, currentUser, logout } = useRegistration();
@@ -15,11 +17,12 @@ const Header = () => {
   return (
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="p-2 rounded-lg bg-gradient-primary group-hover:shadow-elevated transition-shadow">
-            <GraduationCap className="w-6 h-6 text-primary-foreground" />
+        <Link to="/" className="flex items-center gap-3 group">
+          <div className="flex items-center gap-2">
+            <img src={logoGenza} alt="Genza Education" className="h-8 object-contain" />
+            <span className="text-muted-foreground font-medium">×</span>
+            <img src={logoUnigal} alt="Universitas Galuh" className="h-10 object-contain" />
           </div>
-          <span className="font-display font-bold text-xl text-foreground">TryoutPTN</span>
         </Link>
 
         <nav className="flex items-center gap-3">
