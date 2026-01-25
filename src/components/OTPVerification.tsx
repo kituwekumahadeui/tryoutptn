@@ -74,22 +74,10 @@ const OTPVerification = ({ email, nama, onVerified, onCancel }: OTPVerificationP
       if (error) throw error;
 
       if (data?.success) {
-        // OTP verified, now send password via email only (no password in response)
-        const { data: passwordData, error: passwordError } = await supabase.functions.invoke('send-password', {
-          body: { email, nama },
+        toast.success('Email berhasil diverifikasi!', {
+          description: 'Silakan lanjutkan proses pendaftaran.',
         });
-
-        if (passwordError) throw passwordError;
-
-        if (passwordData?.success) {
-          toast.success('Email berhasil diverifikasi!', {
-            description: 'Password telah dikirim ke email Anda. Silakan cek inbox untuk mendapatkan password.',
-            duration: 8000,
-          });
-          onVerified();
-        } else {
-          toast.error(passwordData?.message || 'Gagal mengirim password');
-        }
+        onVerified();
       } else {
         toast.error(data?.message || 'OTP tidak valid');
       }
