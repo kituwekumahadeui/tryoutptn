@@ -78,7 +78,8 @@ const Register = () => {
     try {
       const validated = registerSchema.parse(formData) as { nama: string; nisn: string; tanggalLahir: string; asalSekolah: string; whatsapp: string; email: string };
       
-      const result = await register(validated);
+      // Pass the password from Edge Function to register
+      const result = await register(validated, password);
       
       if (result.success) {
         toast.success('Pendaftaran berhasil!', {

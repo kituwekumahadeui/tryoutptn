@@ -18,7 +18,7 @@ interface RegistrationContextType {
   remainingSlots: number;
   currentUser: Participant | null;
   isLoggedIn: boolean;
-  register: (data: Omit<Participant, 'id' | 'registeredAt'>) => Promise<{ success: boolean; password?: string; error?: string }>;
+  register: (data: Omit<Participant, 'id' | 'registeredAt'>, password: string) => Promise<{ success: boolean; error?: string }>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refreshParticipants: () => Promise<void>;
@@ -38,15 +38,6 @@ async function hashPassword(password: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Generate random password
-function generatePassword(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let password = '';
-  for (let i = 0; i < 8; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return password;
-}
 
 export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -83,7 +74,7 @@ export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
 
   const remainingSlots = TOTAL_SLOTS - participants.length;
 
-  const register = async (data: Omit<Participant, 'id' | 'registeredAt'>): Promise<{ success: boolean; password?: string; error?: string }> => {
+  const register = async (data: Omit<Participant, 'id' | 'registeredAt'>, password: string): Promise<{ success: boolean; error?: string }> => {
     if (remainingSlots <= 0) {
       return { success: false, error: 'Kuota pendaftaran sudah penuh' };
     }
@@ -99,8 +90,7 @@ export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
       return { success: false, error: 'Email atau NISN sudah terdaftar' };
     }
 
-    // Generate password
-    const password = generatePassword();
+    // Hash the password from Edge Function
     const passwordHash = await hashPassword(password);
 
     // Insert into database
@@ -124,7 +114,7 @@ export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
     // Refresh participants list
     await refreshParticipants();
 
-    return { success: true, password };
+    return { success: true };
   };
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
