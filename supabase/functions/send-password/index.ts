@@ -1,8 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
 
 const GMAIL_USER = Deno.env.get("GMAIL_USER");
 const GMAIL_APP_PASSWORD = Deno.env.get("GMAIL_APP_PASSWORD");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 type SendEmailResult =
   | { ok: true }
@@ -64,9 +67,20 @@ function generatePassword(): string {
   return password;
 }
 
+// Hash password using SHA-256
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 interface SendPasswordRequest {
   email: string;
   nama: string;
+  action?: 'reset';
+  participantId?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -76,11 +90,62 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { email, nama }: SendPasswordRequest = await req.json();
+    const { email, nama, action, participantId }: SendPasswordRequest = await req.json();
     
-    console.log(`Generating and sending password to email: ${email}`);
+    console.log(`Generating and sending password to email: ${email}, action: ${action || 'new'}`);
 
     const password = generatePassword();
+
+    // If this is a reset action, update the password in database
+    if (action === 'reset' && participantId) {
+      if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: "Konfigurasi database tidak lengkap.",
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const passwordHash = await hashPassword(password);
+
+      const { error: updateError } = await supabase
+        .from('participants')
+        .update({ password_hash: passwordHash, updated_at: new Date().toISOString() })
+        .eq('id', participantId);
+
+      if (updateError) {
+        console.error("Error updating password:", updateError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            message: "Gagal mengupdate password di database.",
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      console.log(`Password updated for participant: ${participantId}`);
+    }
+
+    // Determine email content based on action
+    const isReset = action === 'reset';
+    const emailSubject = isReset 
+      ? "Password Baru - Tryout PTN Genza × Unigal"
+      : "Password Akun Tryout PTN - Genza × Unigal";
+    
+    const emailTitle = isReset ? "Password Baru" : "Password Akun";
+    const emailGreeting = isReset 
+      ? "Password akun Anda telah direset. Berikut adalah password baru untuk login:"
+      : "Selamat! Email Anda telah berhasil diverifikasi. Berikut adalah password untuk login ke akun Tryout PTN Anda:";
 
     // Send email with password
     const emailHtml = `
@@ -101,23 +166,22 @@ const handler = async (req: Request): Promise<Response> => {
           .warning { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 20px 0; }
           .warning p { color: #92400e; margin: 0; font-size: 14px; }
           .footer { background: #f9fafb; padding: 20px; text-align: center; color: #9ca3af; font-size: 12px; }
-          .logos { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <h1>🎓 Tryout PTN</h1>
+            <h1>🎓 ${emailTitle}</h1>
             <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Genza Education × Universitas Galuh</p>
           </div>
           <div class="content">
             <p class="greeting">Halo <strong>${nama}</strong>,</p>
-            <p class="greeting">Selamat! Email Anda telah berhasil diverifikasi. Berikut adalah password untuk login ke akun Tryout PTN Anda:</p>
+            <p class="greeting">${emailGreeting}</p>
             <div class="password-box">
               <p class="password-code">${password}</p>
             </div>
             <div class="warning">
-              <p>⚠️ <strong>PENTING:</strong> Simpan password ini dengan baik. Password tidak dapat dipulihkan jika hilang.</p>
+              <p>⚠️ <strong>PENTING:</strong> Simpan password ini dengan baik. ${isReset ? 'Password lama sudah tidak berlaku.' : 'Password tidak dapat dipulihkan jika hilang.'}</p>
             </div>
             <p class="info">📧 Gunakan email <strong>${email}</strong> dan password di atas untuk masuk ke akun Anda.</p>
             <p class="info">🔐 Kami sarankan untuk menyimpan password ini di tempat yang aman.</p>
@@ -131,11 +195,7 @@ const handler = async (req: Request): Promise<Response> => {
       </html>
     `;
 
-    const emailResponse = await sendEmail(
-      email,
-      "Password Akun Tryout PTN - Genza × Unigal",
-      emailHtml,
-    );
+    const emailResponse = await sendEmail(email, emailSubject, emailHtml);
 
     console.log("Email send result:", emailResponse);
 
@@ -155,8 +215,8 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "Password berhasil dikirim ke email.",
-        password: password // Return password so it can be used for registration
+        message: isReset ? "Password baru berhasil dikirim ke email." : "Password berhasil dikirim ke email.",
+        password: isReset ? undefined : password // Only return password for new registrations
       }),
       {
         status: 200,
