@@ -23,7 +23,7 @@ const registerSchema = z.object({
 
 const Register = () => {
   const navigate = useNavigate();
-  const { register, remainingSlots } = useRegistration();
+  const { registerFromEdgeFunction, remainingSlots } = useRegistration();
   const [formData, setFormData] = useState({
     nama: '',
     nisn: '',
@@ -71,15 +71,15 @@ const Register = () => {
     }
   };
 
-  const handleEmailVerified = async (password: string) => {
+  const handleEmailVerified = async () => {
     setShowOTPVerification(false);
     setIsSubmitting(true);
 
     try {
       const validated = registerSchema.parse(formData) as { nama: string; nisn: string; tanggalLahir: string; asalSekolah: string; whatsapp: string; email: string };
       
-      // Pass the password from Edge Function to register
-      const result = await register(validated, password);
+      // Register using edge function (password is sent via email only, not in API response)
+      const result = await registerFromEdgeFunction(validated);
       
       if (result.success) {
         toast.success('Pendaftaran berhasil!', {

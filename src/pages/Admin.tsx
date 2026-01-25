@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import { Search, Users, Download, Shield } from 'lucide-react';
-import { useRegistration } from '@/contexts/RegistrationContext';
+import { useState, useEffect } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { Search, Users, Download, Shield, LogOut, Loader2 } from 'lucide-react';
 import Header from '@/components/Header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -15,43 +14,158 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
 import AdminPaymentVerification from '@/components/AdminPaymentVerification';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+interface Participant {
+  id: string;
+  nama: string;
+  nisn: string;
+  tanggal_lahir: string;
+  asal_sekolah: string;
+  registered_at: string;
+}
 
 const Admin = () => {
-  const { participants, totalSlots, remainingSlots } = useRegistration();
+  const navigate = useNavigate();
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [adminPassword, setAdminPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const ADMIN_PASSWORD = 'admin123'; // Simple password for demo
+  const TOTAL_SLOTS = 1000;
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPassword === ADMIN_PASSWORD) {
-      setIsAuthenticated(true);
-      setError('');
-    } else {
-      setError('Password salah!');
+  // Check if user is already logged in and is admin
+  useEffect(() => {
+    checkAdminAuth();
+  }, []);
+
+  const checkAdminAuth = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        // Check if user has admin role
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .eq('role', 'admin')
+          .maybeSingle();
+
+        if (!roleError && roleData) {
+          setIsAuthenticated(true);
+          await fetchParticipants();
+        }
+      }
+    } catch (error) {
+      console.error('Auth check error:', error);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  const fetchParticipants = async () => {
+    try {
+      // Use the public view that excludes password_hash
+      const { data, error } = await supabase
+        .from('participants_public')
+        .select('*')
+        .order('registered_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching participants:', error);
+        return;
+      }
+
+      setParticipants(data || []);
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsLoggingIn(true);
+
+    try {
+      // Authenticate with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        setError('Email atau password salah');
+        setIsLoggingIn(false);
+        return;
+      }
+
+      if (!authData.user) {
+        setError('Login gagal');
+        setIsLoggingIn(false);
+        return;
+      }
+
+      // Check if user has admin role
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', authData.user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      if (roleError || !roleData) {
+        setError('Anda bukan admin. Akses ditolak.');
+        await supabase.auth.signOut();
+        setIsLoggingIn(false);
+        return;
+      }
+
+      setIsAuthenticated(true);
+      await fetchParticipants();
+      toast.success('Login berhasil!');
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Terjadi kesalahan saat login');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsAuthenticated(false);
+    setParticipants([]);
+    toast.success('Logout berhasil');
   };
 
   const filteredParticipants = participants.filter(
     (p) =>
       p.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.nisn.includes(searchQuery) ||
-      p.asalSekolah.toLowerCase().includes(searchQuery.toLowerCase())
+      p.asal_sekolah.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const remainingSlots = TOTAL_SLOTS - participants.length;
+
+  // CSV export - excludes sensitive data (password_hash is not in the view)
   const exportToCSV = () => {
     const headers = ['No', 'Nama', 'NISN', 'Tanggal Lahir', 'Asal Sekolah', 'Tanggal Daftar'];
     const rows = participants.map((p, index) => [
       index + 1,
       p.nama,
       p.nisn,
-      p.tanggalLahir ? new Date(p.tanggalLahir).toLocaleDateString('id-ID') : '-',
-      p.asalSekolah,
-      new Date(p.registeredAt).toLocaleDateString('id-ID'),
+      p.tanggal_lahir ? new Date(p.tanggal_lahir).toLocaleDateString('id-ID') : '-',
+      p.asal_sekolah,
+      new Date(p.registered_at).toLocaleDateString('id-ID'),
     ]);
 
     const csvContent =
@@ -66,6 +180,14 @@ const Admin = () => {
     document.body.removeChild(link);
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-background">
@@ -79,25 +201,45 @@ const Admin = () => {
                 </div>
                 <CardTitle className="text-2xl">Panel Admin</CardTitle>
                 <p className="text-muted-foreground">
-                  Masukkan password untuk mengakses panel admin
+                  Masuk dengan akun admin untuk mengakses panel
                 </p>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleAdminLogin} className="space-y-4">
-                  <div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email Admin</Label>
                     <Input
+                      id="email"
+                      type="email"
+                      placeholder="admin@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
                       type="password"
-                      placeholder="Password Admin"
-                      value={adminPassword}
-                      onChange={(e) => setAdminPassword(e.target.value)}
-                      className="text-center"
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
                     />
                   </div>
                   {error && (
                     <p className="text-destructive text-sm text-center">{error}</p>
                   )}
-                  <Button type="submit" className="w-full">
-                    Masuk Admin
+                  <Button type="submit" className="w-full" disabled={isLoggingIn}>
+                    {isLoggingIn ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Memproses...
+                      </>
+                    ) : (
+                      'Masuk Admin'
+                    )}
                   </Button>
                 </form>
               </CardContent>
@@ -112,13 +254,19 @@ const Admin = () => {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
-            Panel Admin
-          </h1>
-          <p className="text-muted-foreground">
-            Kelola dan pantau data peserta tryout
-          </p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">
+              Panel Admin
+            </h1>
+            <p className="text-muted-foreground">
+              Kelola dan pantau data peserta tryout
+            </p>
+          </div>
+          <Button variant="outline" onClick={handleLogout} className="gap-2">
+            <LogOut className="w-4 h-4" />
+            Logout
+          </Button>
         </div>
 
         {/* Stats Cards */}
@@ -162,7 +310,7 @@ const Admin = () => {
                 <div>
                   <p className="text-sm text-muted-foreground">Total Kuota</p>
                   <p className="text-2xl font-bold text-foreground">
-                    {totalSlots}
+                    {TOTAL_SLOTS}
                   </p>
                 </div>
               </div>
@@ -240,17 +388,17 @@ const Admin = () => {
                               {participant.nisn}
                             </TableCell>
                             <TableCell>
-                              {participant.tanggalLahir 
-                                ? new Date(participant.tanggalLahir).toLocaleDateString('id-ID', {
+                              {participant.tanggal_lahir 
+                                ? new Date(participant.tanggal_lahir).toLocaleDateString('id-ID', {
                                     day: 'numeric',
                                     month: 'long',
                                     year: 'numeric',
                                   })
                                 : '-'}
                             </TableCell>
-                            <TableCell>{participant.asalSekolah}</TableCell>
+                            <TableCell>{participant.asal_sekolah}</TableCell>
                             <TableCell>
-                              {new Date(participant.registeredAt).toLocaleDateString(
+                              {new Date(participant.registered_at).toLocaleDateString(
                                 'id-ID',
                                 {
                                   day: 'numeric',
@@ -272,7 +420,7 @@ const Admin = () => {
           </TabsContent>
 
           <TabsContent value="payments">
-            <AdminPaymentVerification participants={participants} />
+            <AdminPaymentVerification participants={participants.map(p => ({ id: p.id, nama: p.nama, nisn: p.nisn }))} />
           </TabsContent>
         </Tabs>
       </main>

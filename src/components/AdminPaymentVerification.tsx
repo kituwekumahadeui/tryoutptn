@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Check, X, Loader2, Eye, RefreshCw } from 'lucide-react';
+import { Check, X, Loader2, Eye, RefreshCw, ImageOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ interface Participant {
 
 const AdminPaymentVerification = ({ participants }: { participants: Participant[] }) => {
   const [payments, setPayments] = useState<PaymentProof[]>([]);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPayment, setSelectedPayment] = useState<PaymentProof | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -56,11 +57,47 @@ const AdminPaymentVerification = ({ participants }: { participants: Participant[
       }
 
       setPayments(data || []);
+      
+      // Generate signed URLs for each payment proof
+      if (data && data.length > 0) {
+        await generateSignedUrls(data);
+      }
     } catch (error) {
       console.error('Error:', error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const generateSignedUrls = async (paymentData: PaymentProof[]) => {
+    const urls: Record<string, string> = {};
+    
+    for (const payment of paymentData) {
+      try {
+        // Extract file path from the stored path
+        // The file_path might be a full URL or just a path
+        let filePath = payment.file_path;
+        
+        // If it's a full URL, extract just the path
+        if (filePath.includes('/storage/v1/object/public/payment-proofs/')) {
+          filePath = filePath.split('/storage/v1/object/public/payment-proofs/')[1];
+        } else if (filePath.includes('/storage/v1/object/sign/payment-proofs/')) {
+          filePath = filePath.split('/storage/v1/object/sign/payment-proofs/')[1].split('?')[0];
+        }
+
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('payment-proofs')
+          .createSignedUrl(filePath, 3600); // 1 hour expiry
+
+        if (!signedError && signedData?.signedUrl) {
+          urls[payment.id] = signedData.signedUrl;
+        }
+      } catch (error) {
+        console.error('Error generating signed URL for payment:', payment.id, error);
+      }
+    }
+    
+    setSignedUrls(urls);
   };
 
   useEffect(() => {
@@ -123,6 +160,10 @@ const AdminPaymentVerification = ({ participants }: { participants: Participant[
     }
   };
 
+  const getImageUrl = (paymentId: string) => {
+    return signedUrls[paymentId] || null;
+  };
+
   const pendingCount = payments.filter(p => p.status === 'pending').length;
   const verifiedCount = payments.filter(p => p.status === 'verified').length;
 
@@ -154,17 +195,25 @@ const AdminPaymentVerification = ({ participants }: { participants: Participant[
             <div className="space-y-3">
               {payments.map((payment) => {
                 const participant = getParticipantInfo(payment.participant_id);
+                const imageUrl = getImageUrl(payment.id);
+                
                 return (
                   <div
                     key={payment.id}
                     className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <img
-                        src={payment.file_path}
-                        alt="Bukti transfer"
-                        className="w-16 h-16 object-cover rounded-lg border"
-                      />
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt="Bukti transfer"
+                          className="w-16 h-16 object-cover rounded-lg border"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 bg-muted rounded-lg border flex items-center justify-center">
+                          <ImageOff className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
                       <div>
                         <p className="font-medium text-foreground">
                           {participant?.nama || 'Unknown'}
@@ -232,11 +281,20 @@ const AdminPaymentVerification = ({ participants }: { participants: Participant[
 
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Bukti Transfer</p>
-                <img
-                  src={selectedPayment.file_path}
-                  alt="Bukti transfer"
-                  className="w-full max-h-80 object-contain rounded-lg border bg-muted"
-                />
+                {getImageUrl(selectedPayment.id) ? (
+                  <img
+                    src={getImageUrl(selectedPayment.id)!}
+                    alt="Bukti transfer"
+                    className="w-full max-h-80 object-contain rounded-lg border bg-muted"
+                  />
+                ) : (
+                  <div className="w-full h-40 bg-muted rounded-lg border flex items-center justify-center">
+                    <div className="text-center text-muted-foreground">
+                      <ImageOff className="w-8 h-8 mx-auto mb-2" />
+                      <p className="text-sm">Gambar tidak tersedia</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

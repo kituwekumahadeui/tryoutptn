@@ -18,7 +18,7 @@ interface RegistrationContextType {
   remainingSlots: number;
   currentUser: Participant | null;
   isLoggedIn: boolean;
-  register: (data: Omit<Participant, 'id' | 'registeredAt'>, password: string) => Promise<{ success: boolean; error?: string }>;
+  registerFromEdgeFunction: (data: Omit<Participant, 'id' | 'registeredAt'>) => Promise<{ success: boolean; error?: string }>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refreshParticipants: () => Promise<void>;
@@ -44,8 +44,9 @@ export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<Participant | null>(null);
 
   const refreshParticipants = async () => {
+    // Use the public view that excludes password_hash
     const { data, error } = await supabase
-      .from('participants')
+      .from('participants_public')
       .select('*')
       .order('registered_at', { ascending: true });
 
@@ -74,82 +75,79 @@ export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
 
   const remainingSlots = TOTAL_SLOTS - participants.length;
 
-  const register = async (data: Omit<Participant, 'id' | 'registeredAt'>, password: string): Promise<{ success: boolean; error?: string }> => {
+  // Registration is now handled by edge function - password is sent via email only
+  const registerFromEdgeFunction = async (data: Omit<Participant, 'id' | 'registeredAt'>): Promise<{ success: boolean; error?: string }> => {
     if (remainingSlots <= 0) {
       return { success: false, error: 'Kuota pendaftaran sudah penuh' };
     }
 
-    // Check if email or NISN already exists
-    const { data: existing } = await supabase
-      .from('participants')
-      .select('id')
-      .or(`email.eq.${data.email},nisn.eq.${data.nisn}`)
-      .limit(1);
-
-    if (existing && existing.length > 0) {
-      return { success: false, error: 'Email atau NISN sudah terdaftar' };
-    }
-
-    // Hash the password from Edge Function
-    const passwordHash = await hashPassword(password);
-
-    // Insert into database
-    const { error: insertError } = await supabase
-      .from('participants')
-      .insert({
-        nama: data.nama,
-        nisn: data.nisn,
-        tanggal_lahir: data.tanggalLahir,
-        asal_sekolah: data.asalSekolah,
-        whatsapp: data.whatsapp,
-        email: data.email.toLowerCase(),
-        password_hash: passwordHash,
+    try {
+      // Call edge function to handle registration securely
+      const { data: registerData, error: registerError } = await supabase.functions.invoke('register-participant', {
+        body: {
+          nama: data.nama,
+          nisn: data.nisn,
+          tanggal_lahir: data.tanggalLahir,
+          asal_sekolah: data.asalSekolah,
+          whatsapp: data.whatsapp,
+          email: data.email.toLowerCase(),
+        },
       });
 
-    if (insertError) {
-      console.error('Insert error:', insertError);
-      return { success: false, error: insertError.message };
+      if (registerError) {
+        console.error('Registration error:', registerError);
+        return { success: false, error: registerError.message };
+      }
+
+      if (!registerData?.success) {
+        return { success: false, error: registerData?.message || 'Gagal mendaftar' };
+      }
+
+      // Refresh participants list
+      await refreshParticipants();
+
+      return { success: true };
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      return { success: false, error: error.message };
     }
-
-    // Refresh participants list
-    await refreshParticipants();
-
-    return { success: true };
   };
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    const passwordHash = await hashPassword(password);
+    try {
+      // Call edge function for secure login (password verification happens server-side)
+      const { data: loginData, error: loginError } = await supabase.functions.invoke('login-participant', {
+        body: { email: email.toLowerCase(), password },
+      });
 
-    const { data: user, error } = await supabase
-      .from('participants')
-      .select('*')
-      .eq('email', email.toLowerCase())
-      .eq('password_hash', passwordHash)
-      .maybeSingle();
+      if (loginError) {
+        console.error('Login error:', loginError);
+        return { success: false, error: 'Terjadi kesalahan saat login' };
+      }
 
-    if (error) {
+      if (!loginData?.success) {
+        return { success: false, error: loginData?.message || 'Email atau password salah' };
+      }
+
+      const user = loginData.user;
+      const mappedUser: Participant = {
+        id: user.id,
+        nama: user.nama,
+        nisn: user.nisn,
+        tanggalLahir: user.tanggal_lahir,
+        asalSekolah: user.asal_sekolah,
+        whatsapp: user.whatsapp,
+        email: user.email,
+        registeredAt: user.registered_at,
+      };
+
+      setCurrentUser(mappedUser);
+      localStorage.setItem(USER_KEY, JSON.stringify(mappedUser));
+      return { success: true };
+    } catch (error: any) {
       console.error('Login error:', error);
       return { success: false, error: 'Terjadi kesalahan saat login' };
     }
-
-    if (!user) {
-      return { success: false, error: 'Email atau password salah' };
-    }
-
-    const mappedUser: Participant = {
-      id: user.id,
-      nama: user.nama,
-      nisn: user.nisn,
-      tanggalLahir: user.tanggal_lahir,
-      asalSekolah: user.asal_sekolah,
-      whatsapp: user.whatsapp,
-      email: user.email,
-      registeredAt: user.registered_at,
-    };
-
-    setCurrentUser(mappedUser);
-    localStorage.setItem(USER_KEY, JSON.stringify(mappedUser));
-    return { success: true };
   };
 
   const logout = () => {
@@ -165,7 +163,7 @@ export const RegistrationProvider = ({ children }: { children: ReactNode }) => {
         remainingSlots,
         currentUser,
         isLoggedIn: !!currentUser,
-        register,
+        registerFromEdgeFunction,
         login,
         logout,
         refreshParticipants,

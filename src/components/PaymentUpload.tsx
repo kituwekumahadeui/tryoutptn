@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { Upload, Loader2, CheckCircle2, Clock, XCircle, CreditCard } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Upload, Loader2, CheckCircle2, Clock, XCircle, CreditCard, ImageOff } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
@@ -61,17 +61,13 @@ const PaymentUpload = ({ participantId, onPaymentUploaded }: PaymentUploadProps)
         return;
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('payment-proofs')
-        .getPublicUrl(filePath);
-
-      // Insert payment record
+      // Store the file path (not public URL) in database
+      // Images will be served via signed URLs
       const { error: insertError } = await supabase
         .from('payment_proofs')
         .insert({
           participant_id: participantId,
-          file_path: urlData.publicUrl,
+          file_path: filePath, // Store path, not full URL
           amount: 10000,
           status: 'pending',
         });
@@ -193,6 +189,36 @@ interface PaymentStatusProps {
 }
 
 export const PaymentStatus = ({ status, fileUrl, adminNotes }: PaymentStatusProps) => {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const getSignedUrl = async () => {
+      if (fileUrl) {
+        try {
+          // Extract file path from URL or use as-is
+          let filePath = fileUrl;
+          if (filePath.includes('/storage/v1/object/public/payment-proofs/')) {
+            filePath = filePath.split('/storage/v1/object/public/payment-proofs/')[1];
+          } else if (filePath.includes('/storage/v1/object/sign/payment-proofs/')) {
+            filePath = filePath.split('/storage/v1/object/sign/payment-proofs/')[1].split('?')[0];
+          }
+
+          const { data, error } = await supabase.storage
+            .from('payment-proofs')
+            .createSignedUrl(filePath, 3600);
+
+          if (!error && data?.signedUrl) {
+            setSignedUrl(data.signedUrl);
+          }
+        } catch (error) {
+          console.error('Error getting signed URL:', error);
+        }
+      }
+    };
+
+    getSignedUrl();
+  }, [fileUrl]);
+
   const statusConfig = {
     pending: {
       icon: Clock,
@@ -235,13 +261,21 @@ export const PaymentStatus = ({ status, fileUrl, adminNotes }: PaymentStatusProp
             <p className="text-sm text-muted-foreground">{config.description}</p>
           </div>
         </div>
-        {fileUrl && (
+        {signedUrl && (
           <div className="mt-4">
             <img
-              src={fileUrl}
+              src={signedUrl}
               alt="Bukti transfer"
               className="max-h-32 rounded-lg border object-contain"
             />
+          </div>
+        )}
+        {fileUrl && !signedUrl && (
+          <div className="mt-4 flex items-center justify-center h-32 bg-muted rounded-lg border">
+            <div className="text-center text-muted-foreground">
+              <ImageOff className="w-6 h-6 mx-auto mb-1" />
+              <p className="text-xs">Gambar sedang dimuat...</p>
+            </div>
           </div>
         )}
       </CardContent>
