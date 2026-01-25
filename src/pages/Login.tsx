@@ -133,7 +133,12 @@ const Login = () => {
                 </Button>
               </form>
 
-              <div className="mt-6 text-center">
+              <div className="mt-6 text-center space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  <Link to="/forgot-password" className="text-primary hover:underline font-medium">
+                    Lupa password?
+                  </Link>
+                </p>
                 <p className="text-sm text-muted-foreground">
                   Belum terdaftar?{' '}
                   <Link to="/register" className="text-primary hover:underline font-medium">
