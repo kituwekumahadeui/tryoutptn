@@ -57,23 +57,30 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Generate random password
+// Generate random password with more characters for better security
 function generatePassword(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
   let password = '';
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 12; i++) { // Increased to 12 characters
     password += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return password;
 }
 
-// Hash password using SHA-256
-async function hashPassword(password: string): Promise<string> {
+// Hash password using SHA-256 with salt
+async function hashPassword(password: string, salt: string): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(password);
+  const data = encoder.encode(salt + password);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Generate a random salt
+function generateSalt(): string {
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 interface SendPasswordRequest {
@@ -95,6 +102,7 @@ const handler = async (req: Request): Promise<Response> => {
     console.log(`Generating and sending password to email: ${email}, action: ${action || 'new'}`);
 
     const password = generatePassword();
+    const salt = generateSalt();
 
     // If this is a reset action, update the password in database
     if (action === 'reset' && participantId) {
@@ -112,11 +120,14 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-      const passwordHash = await hashPassword(password);
+      const passwordHash = await hashPassword(password, salt);
 
       const { error: updateError } = await supabase
         .from('participants')
-        .update({ password_hash: passwordHash, updated_at: new Date().toISOString() })
+        .update({ 
+          password_hash: `${salt}:${passwordHash}`, // Store salt with hash
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', participantId);
 
       if (updateError) {
@@ -212,11 +223,13 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // SECURITY FIX: Never return password in response - it's only sent via email
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: isReset ? "Password baru berhasil dikirim ke email." : "Password berhasil dikirim ke email.",
-        password: isReset ? undefined : password // Only return password for new registrations
+        // Password is NOT included in response - only sent via email
+        salt: isReset ? undefined : salt // Only return salt for new registrations (needed for DB insert)
       }),
       {
         status: 200,
