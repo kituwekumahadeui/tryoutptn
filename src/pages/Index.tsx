@@ -172,9 +172,9 @@ const Index = () => {
       <footer className="bg-card border-t border-border py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <div className="flex items-center justify-center gap-3 mb-3">
-            <img src={logoGenza} alt="Genza Education" className="h-6 object-contain" />
-            <span>×</span>
             <img src={logoUnigal} alt="Universitas Galuh" className="h-7 object-contain" />
+            <span>×</span>            
+            <img src={logoGenza} alt="Genza Education" className="h-6 object-contain" />
           </div>
           <p>&copy; 2026 Genza Education × Universitas Galuh. Platform simulasi ujian masuk perguruan tinggi.</p>
         </div>
