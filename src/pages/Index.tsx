@@ -48,11 +48,11 @@ const Index = () => {
             {/* Organizer Logos */}
             <div className="flex items-center justify-center gap-4 mb-8 animate-fade-in">
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
-                <img src={logoGenza} alt="Genza Education" className="h-10 object-contain" />
-              </div>
-              <span className="text-primary-foreground/60 text-2xl">×</span>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
                 <img src={logoUnigal} alt="Universitas Galuh" className="h-12 object-contain" />
+              </div>
+               <span className="text-primary-foreground/60 text-2xl">×</span>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
+                <img src={logoGenza} alt="Genza Education" className="h-10 object-contain" />
               </div>
             </div>
 
